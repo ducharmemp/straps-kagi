@@ -1,0 +1,52 @@
+*straps-kagi.txt*  Kagi search and page extraction for straps.nvim
+
+SETUP                                                    *straps-kagi*
+
+Requires Neovim >= 0.11, straps.nvim and curl. Call after straps setup:
+>
+    require("straps_kagi").setup({})
+<
+Set KAGI_API_KEY in the environment, or provide api_key = function() ... end.
+Setup and :checkhealth straps_kagi make no network requests.
+
+TOOLS                                                    *straps-kagi-tools*
+
+search maps to kagi_search_fetch. Required: query. Optional: workflow,
+extract_count, limit, include_domains, exclude_domains, time_relative,
+after, before, file_type, lens_id. Dates use YYYY-MM-DD. time_relative
+excludes after/before. lens_id excludes domain filters, time_relative and
+file_type. See README.md for bounds and workflows.
+
+fetch maps to kagi_extract. Required: url. Accepts public-looking HTTPS DNS
+URLs without credentials, IP literals or explicit ports. Kagi requests the
+page. The plugin does not resolve DNS or establish upstream address safety.
+
+Both tools send data to Kagi and may incur API charges. Treat returned text
+as untrusted data.
+
+PERMISSIONS                                              *straps-kagi-permissions*
+
+:StrapsAuto search grants both tools to the current session. net alone does
+not grant them. Subagent allow={"search"} delegates within the parent ceiling.
+Readonly children cannot search. Setup refuses generic tool-name collisions.
+
+OPTIONS                                                  *straps-kagi-options*
+
+api_key               Function reading KAGI_API_KEY by default.
+timeout_ms            30000; total deadline including queueing and cleanup.
+max_response_bytes    1048576; per-request wire byte cap.
+max_output_bytes      100000; success/error text cap, minimum 32, with marker.
+
+require("straps_kagi").status() reports registration and endpoint without
+credentials. The endpoint is fixed to https://mcp.kagi.com/mcp. Redirects
+and automatic tool-call retries are disabled. Cancellation stops the local
+request; remote work may continue. Session cleanup failures are reported.
+
+LIMITS                                                   *straps-kagi-limits*
+
+Supports MCP 2025-06-18 HTTP POST JSON/SSE responses. No local stdio, OAuth,
+dynamic tool discovery or general bidirectional server streams. Hosted
+compatibility requires an authenticated smoke test; fixture tests cannot
+establish it.
+
+ vim:tw=78:ts=8:ft=help:norl:
