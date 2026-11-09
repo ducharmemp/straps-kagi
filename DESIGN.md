@@ -8,7 +8,9 @@ Trusted explicit setup validates options and checks both tool names before regis
 
 ## Transport
 
-Each invocation resolves credentials, initializes an MCP connection, sends the initialized notification and calls one upstream tool. Protocol version 2025-06-18, JSON responses and Server-Sent Events responses are supported. A server-assigned session identifier propagates to subsequent requests; normal completion attempts session deletion within the deadline. Cancellation stops local transport and skips deletion. Remote work may continue.
+Each invocation resolves credentials from the canonical `straps/kagi_api_key` config path before the environment. An explicit callback overrides default resolution. Existing invalid credential files fail closed. Secret-input login uses an atomic mode-0600 file replacement in a verified mode-0700 directory. Reads validate the opened descriptor and allow secure symlink targets; mutation refuses symlinks. Reads and writes share a 4096-byte key limit. Concurrent hostile replacement of directories by the same user lies outside the credential store's trust boundary.
+
+Each invocation initializes an MCP connection, sends the initialized notification and calls one upstream tool. Protocol version 2025-06-18, JSON responses and Server-Sent Events responses are supported. A server-assigned session identifier propagates to subsequent requests; normal completion attempts session deletion within the deadline. Cancellation stops local transport and skips deletion. Remote work may continue.
 
 Curl receives configuration through stdin. Credentials never appear in process arguments. The fixed HTTPS endpoint does not follow redirects. Shared subprocess admission, per-await cancellation, deadlines and byte caps constrain requests. Tool calls are never retried after an uncertain outcome.
 

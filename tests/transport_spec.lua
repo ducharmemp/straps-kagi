@@ -316,6 +316,23 @@ describe("Kagi transport", function()
     idle()
   end)
 
+  it("uses stored defaults and validates explicit callback overrides without fallback", function()
+    local credentials = require("straps_kagi.credentials")
+    credentials.store("fixture-stored-key")
+    local ok = run({ api_key = credentials.resolve })
+    check(ok, "default resolver failed with stored fixture")
+    check(read("stdin.1"):find("fixture-stored-key", 1, true) ~= nil, "stored key did not reach transport")
+    credentials.store(false)
+    for _, value in ipairs({ "has space", "nonascii-é", false, string.rep("x", 4097) }) do
+      local before = read("count")
+      local accepted = run({ api_key = function() return value end })
+      check(not accepted, "invalid callback credential accepted")
+      check(read("count") == before, "invalid callback spawned transport")
+    end
+    local accepted, failure = run({ api_key = function() error("fixture-private-callback") end })
+    check(not accepted and not failure:find("fixture-private-callback", 1, true), "callback error leaked secret")
+  end)
+
   it("rejects missing credentials before spawning", function()
     failed("KAGI_API_KEY is missing", { api_key = function() return nil end })
     check(vim.fn.filereadable(root .. "/count") == 0, "missing credential prevents spawn")

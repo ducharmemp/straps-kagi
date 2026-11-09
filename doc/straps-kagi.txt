@@ -6,8 +6,17 @@ Requires Neovim >= 0.11, straps.nvim and curl. Call after straps setup:
 >
     require("straps_kagi").setup({})
 <
-Set KAGI_API_KEY in the environment, or provide api_key = function() ... end.
-Setup and :checkhealth straps_kagi make no network requests.
+The default reads $XDG_CONFIG_HOME/straps/kagi_api_key before KAGI_API_KEY.
+With no absolute XDG_CONFIG_HOME, use $HOME/.config/straps/kagi_api_key.
+:StrapsKagiLogin prompts for a key without command arguments. The Lua helper
+require("straps_kagi").login() returns a path or false on cancellation.
+Writes use file mode 0600 and directory mode 0700. Maximum key size: 4096
+bytes. Invalid/insecure existing files stop resolution, including env fallback.
+Secure symlink reads are allowed; writes and deletes refuse symlinks.
+Concurrent hostile directory replacement by the same user is outside the
+credential store's trust boundary.
+An explicit api_key callback overrides file and environment resolution.
+Setup makes no network requests. Health inspects metadata without reading keys.
 
 TOOLS                                                    *straps-kagi-tools*
 
@@ -32,7 +41,7 @@ Readonly children cannot search. Setup refuses generic tool-name collisions.
 
 OPTIONS                                                  *straps-kagi-options*
 
-api_key               Function reading KAGI_API_KEY by default.
+api_key               Optional callback; default stored key then KAGI_API_KEY.
 timeout_ms            30000; total deadline including queueing and cleanup.
 max_response_bytes    1048576; per-request wire byte cap.
 max_output_bytes      100000; success/error text cap, minimum 32, with marker.

@@ -10,7 +10,9 @@ Require Neovim 0.11 or newer, straps.nvim and curl. Put this plugin on runtimepa
 require("straps_kagi").setup({})
 ```
 
-Set `KAGI_API_KEY` outside Neovim before starting it, or supply an `api_key` function that returns a key. Never put credentials in a transcript. Setup and health checks make no network requests.
+The default resolver reads `$XDG_CONFIG_HOME/straps/kagi_api_key`, or `$HOME/.config/straps/kagi_api_key` when XDG_CONFIG_HOME is absent or relative, before `KAGI_API_KEY`. Run `:StrapsKagiLogin` for a secret-input prompt, or call `require("straps_kagi").login()` from trusted configuration. The helper creates the straps directory with mode `0700` and writes the key file with mode `0600`. Keys must contain at most 4096 bytes. Never pass a key as a command argument or put credentials in a transcript.
+
+An existing invalid, empty, unreadable or insecure stored file stops resolution even when the environment contains a key. Secure symlink targets can be read; writes and deletes refuse symlinks. Concurrent hostile directory replacement by the same user lies outside the credential store's trust boundary. An explicit `api_key` callback overrides both stored and environment credentials and must return a valid key. Setup and health checks make no network requests; health inspects file metadata without reading its contents.
 
 For Nixvim, import `straps.nixvimModules.default` and `straps-kagi.nixvimModules.default`, then enable `plugins.straps.enable` and `plugins.straps-kagi.enable`. Configure `plugins.straps-kagi.settings` as needed. The flake also exports a default package and `overlays.default`.
 
@@ -30,7 +32,7 @@ Queries and target URLs leave the machine and reach Kagi. API usage may incur ch
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `api_key` | Function reading `KAGI_API_KEY` | Called per invocation. |
+| `api_key` | Stored key, then `KAGI_API_KEY` | Optional callback override, called per invocation. |
 | `timeout_ms` | `30000` | Total invocation deadline, including subprocess admission and cleanup. |
 | `max_response_bytes` | `1048576` | Per-request wire response cap. |
 | `max_output_bytes` | `100000` | Retained success or error text cap, minimum 32; truncated text has a marker. |

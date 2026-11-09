@@ -217,10 +217,11 @@ function M.call(name, arguments, config, ctx)
   end
   local ok, output = pcall(function()
     if not ctx or not ctx.await or not ctx.on_cancel then error("requires an asynchronous run context", 0) end
-    local key_ok, value = pcall(config.api_key or function() return vim.env.KAGI_API_KEY end)
-    if not key_ok then error("credential resolver failed", 0) end
-    if type(value) ~= "string" or value == "" or value:find("[%c]") then error("KAGI_API_KEY is missing or invalid", 0) end
-    key = value
+    local key_ok, value = pcall(config.api_key or function() return require("straps_kagi.credentials").resolve() end)
+    if not key_ok then error("credential resolver failed; check the stored Kagi key permissions and configuration", 0) end
+    local cleaned = require("straps_kagi.credentials").clean_key(value)
+    if not cleaned then error("KAGI_API_KEY is missing or invalid", 0) end
+    key = cleaned
     local initialized = rpc({ jsonrpc = "2.0", id = 1, method = "initialize", params = {
       protocolVersion = protocol, capabilities = vim.empty_dict(), clientInfo = { name = "straps-kagi", version = "0.1.0" },
     } })

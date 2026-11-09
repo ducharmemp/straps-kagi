@@ -1,11 +1,30 @@
 local M = {}
 local installed = {}
 local config
+local installed_command
+
+local function command_state()
+  return vim.api.nvim_get_commands({ builtin = false }).StrapsKagiLogin
+end
+
+local function login_command()
+  local ok, result = pcall(M.login)
+  if not ok then vim.notify("straps-kagi: could not store API key", vim.log.levels.ERROR)
+  elseif result then vim.notify("straps-kagi: saved API key to " .. result, vim.log.levels.INFO) end
+end
+
+function M.login()
+  assert(require("straps.registry").active_scope() == nil, "straps-kagi: login requires trusted configuration")
+  local value = vim.fn.inputsecret("straps-kagi: API key: ")
+  if not value or vim.trim(value) == "" then return false end
+  local _, path = require("straps_kagi.credentials").store(value)
+  return path
+end
 
 local function options(value)
   assert(value == nil or type(value) == "table", "straps-kagi: setup options must be a table")
   local result = {
-    api_key = function() return vim.env.KAGI_API_KEY end,
+    api_key = function() return require("straps_kagi.credentials").resolve() end,
     timeout_ms = 30000,
     max_response_bytes = 1048576,
     max_output_bytes = 100000,
@@ -31,6 +50,9 @@ function M.setup(value)
     "straps-kagi: Straps registry is required")
   assert(registry.active_scope() == nil, "straps-kagi: setup must run from trusted configuration outside a Straps session")
   assert(registry.get("fn.capability"), "straps-kagi: Straps setup must run before adapter setup")
+  local command = command_state()
+  assert(command == nil and installed_command == nil or installed_command and vim.deep_equal(command, installed_command),
+    "straps-kagi: command collision at StrapsKagiLogin")
   local specs = require("straps_kagi.tools").specs
   for _, spec in ipairs(specs) do
     local name = "tool." .. spec.name
@@ -62,6 +84,10 @@ end
       }, { scope = "global" })
       installed[name] = registry.get(name)
     end
+  end
+  if not installed_command then
+    vim.api.nvim_create_user_command("StrapsKagiLogin", login_command, { nargs = 0, desc = "Store a Kagi API key with a secret prompt" })
+    installed_command = command_state()
   end
   config = candidate
   return M

@@ -143,10 +143,38 @@ it("retains global registration while status observes scoped shadows", function(
   check(plugin.status().registered == true, "scoped shadow changed global registration")
 end)
 
+it("stores keys through a secret prompt and accepts no command arguments", function()
+  local old_input, old_notify = vim.fn.inputsecret, vim.notify
+  local reports, prompts = {}, 0
+  vim.notify = function(text) reports[#reports + 1] = text end
+  vim.fn.inputsecret = function() prompts = prompts + 1; return "fixture-login-key" end
+  local ok = pcall(vim.cmd, "StrapsKagiLogin forbidden")
+  check(not ok and prompts == 0, "command arguments reached secret prompt")
+  vim.cmd("StrapsKagiLogin")
+  local credentials = require("straps_kagi.credentials")
+  local key, path = credentials.store()
+  check(key == "fixture-login-key", "secret helper did not store key")
+  check(table.concat(reports):find("fixture-login-key", 1, true) == nil, "helper echoed secret")
+  vim.fn.inputsecret = function() return "" end
+  check(plugin.login() == false, "empty secret input did not cancel")
+  check(credentials.store() == key, "cancellation changed stored key")
+  vim.fn.inputsecret = function() return "replacement-fixture" end
+  check(plugin.login() == path, "login returned something other than path")
+  credentials.store(false)
+  vim.fn.inputsecret, vim.notify = old_input, old_notify
+end)
 it("rejects replacement definitions on repeated setup", function()
   registry.define(registry.get("tool.fetch"), { scope = "global" })
   local before = registry.get("fn.capability")
   local ok, err = pcall(plugin.setup)
   check(not ok and tostring(err):find("registry collision", 1, true) ~= nil, "replacement accepted")
   check(vim.deep_equal(before, registry.get("fn.capability")), "replacement changed classifier")
+end)
+
+it("rejects replacement commands before configuration changes", function()
+  local before = plugin.config().timeout_ms
+  vim.api.nvim_create_user_command("StrapsKagiLogin", function() end, {})
+  local ok, failure = pcall(plugin.setup, { timeout_ms = before + 1 })
+  check(not ok and tostring(failure):find("command collision at StrapsKagiLogin", 1, true) ~= nil, "foreign command accepted")
+  check(plugin.config().timeout_ms == before, "command collision changed config")
 end)

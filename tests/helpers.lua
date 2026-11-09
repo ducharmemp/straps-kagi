@@ -7,6 +7,8 @@ vim.opt.rtp:prepend(root)
 package.path = root .. "/lua/?.lua;" .. root .. "/lua/?/init.lua;" .. straps .. "/lua/?.lua;"
   .. straps .. "/lua/?/init.lua;" .. package.path
 local isolated = vim.fn.tempname()
+vim.env.HOME = isolated .. "/home"
+vim.fn.mkdir(vim.env.HOME, "p")
 for _, key in ipairs({ "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME" }) do
   vim.env[key] = isolated .. "/" .. key
   vim.fn.mkdir(vim.env[key], "p")
