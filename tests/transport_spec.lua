@@ -50,7 +50,7 @@ local function run(options, cancel_at, context)
     done = true
   end)
   assert(coroutine.resume(co))
-  assert(vim.wait(4000, function() return done end, 5), "transport test did not finish")
+  assert(vim.wait(math.max(4000, options.timeout_ms + 2500), function() return done end, 5), "transport test did not finish")
   return ok, result
 end
 local function failed(fragment, options, cancel_at)
@@ -131,6 +131,49 @@ describe("Kagi transport", function()
     write("waitafter.3", "")
     local ok, text = run({ timeout_ms = 500 })
     check(ok and text == "stream done", "correlated SSE response completes an open stream")
+    idle()
+  end)
+
+  it("scans split long SSE lines without blocking or completing before the delimiter", function()
+    local text = string.rep("x", 32768)
+    local data = 'data: ' .. vim.json.encode({ jsonrpc = "2.0", id = 2, result = { content = { { type = "text", text = text } } } })
+    local kills, boundaries, elapsed = 0, {}, nil
+    vim.system = function(command, options, on_exit)
+      if not options.stdin:find("tools/call", 1, true) then return original_system(command, options, on_exit) end
+      vim.schedule(function()
+        local chunks = { "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n", data:sub(1, 32768),
+          data:sub(32769), "\r", "\n", "\r", "\n" }
+        for i, chunk in ipairs(chunks) do
+          local start = vim.uv.hrtime()
+          options.stdout(nil, chunk)
+          if i == 2 then elapsed = (vim.uv.hrtime() - start) / 1e6 end
+          boundaries[#boundaries + 1] = kills
+        end
+      end)
+      return { kill = function() kills = kills + 1 end }
+    end
+    local ok, result = run({ timeout_ms = 20000, max_output_bytes = 40000 })
+    print("INCOMPLETE_CALLBACK_MS=" .. tostring(elapsed))
+    check(elapsed ~= nil and elapsed < 500, "incomplete long SSE callback stays below 500ms")
+    check(vim.deep_equal(boundaries, { 0, 0, 0, 0, 0, 0, 1 }), "SSE waits for the complete split CRLF blank delimiter")
+    check(ok and result == text, "split long SSE content preserved without awaiting EOF")
+    idle()
+  end)
+
+  it("joins multiline SSE data and decodes the final unterminated event at EOF", function()
+    local kills = 0
+    vim.system = function(command, options, on_exit)
+      if not options.stdin:find("tools/call", 1, true) then return original_system(command, options, on_exit) end
+      vim.schedule(function()
+        options.stdout(nil, 'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n'
+          .. 'data: {"jsonrpc":"2.0","id":2,\r\ndata: "result":{"content":[{"type":"text","text":"EOF joined"}]}}')
+        on_exit({ code = 0 })
+      end)
+      return { kill = function() kills = kills + 1 end }
+    end
+    local ok, text = run()
+    check(kills == 0, "unterminated SSE event waits for EOF")
+    check(ok and text == "EOF joined", "multiline unterminated SSE data decoded at EOF")
     idle()
   end)
 
