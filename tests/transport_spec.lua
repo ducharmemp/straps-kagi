@@ -160,6 +160,32 @@ describe("Kagi transport", function()
     idle()
   end)
 
+  it("parses SSE headers and events delivered one byte at a time", function()
+    local kills, decodes = 0, 0
+    local original_decode = vim.json.decode
+    vim.system = function(command, options, on_exit)
+      if not options.stdin:find("tools/call", 1, true) then return original_system(command, options, on_exit) end
+      vim.schedule(function()
+        local raw = 'HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n'
+          .. 'data: {"jsonrpc":"2.0","method":"notifications/message"}\r\n\r\n'
+          .. ': ping\r\n\r\ndata: {"jsonrpc":"2.0","id":2,\r\ndata: "result":{"content":[{"type":"text","text":"bytewise"}]}}\r\n\r\n'
+        vim.json.decode = function(text, ...)
+          decodes = decodes + 1
+          return original_decode(text, ...)
+        end
+        for i = 1, #raw do options.stdout(nil, raw:sub(i, i)) end
+        vim.json.decode = original_decode
+      end)
+      return { kill = function() kills = kills + 1 end }
+    end
+    local ok, text = run()
+    vim.json.decode = original_decode
+    check(ok and text == "bytewise", "bytewise headers and multiline event preserve content")
+    check(kills == 1, "bytewise correlated response stops the open stream once")
+    check(decodes == 2, "stream scanner decodes each completed event once")
+    idle()
+  end)
+
   it("joins multiline SSE data and decodes the final unterminated event at EOF", function()
     local kills = 0
     vim.system = function(command, options, on_exit)

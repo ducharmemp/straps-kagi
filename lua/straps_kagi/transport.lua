@@ -113,23 +113,43 @@ function M.call(name, arguments, config, ctx)
         lines[#lines + 1] = "header = " .. quote("MCP-Protocol-Version: " .. protocol)
       end
       if payload then lines[#lines + 1] = "data = " .. quote(vim.json.encode(payload)) end
-      local function completed_sse()
-        if not payload or payload.id == nil then return false end
-        local raw = table.concat(chunks):gsub("\r\n", "\n")
-        local headers, body = http_parts(raw)
-        if not headers or not headers:lower():find("content%-type:%s*text/event%-stream") then return false end
-        local data = {}
-        for line in body:gmatch("([^\n]*)\n") do
-          if line == "" then
-            if #data > 0 then
-              local ok, message = pcall(vim.json.decode, table.concat(data, "\n"))
-              if ok and type(message) == "table" then
-                if message.id == payload.id and not message.method then return true end
-                if message.id ~= nil and message.method then return true end
-              end
-              data = {}
+      local fragments, headers, data = {}, {}, {}
+      local in_headers, sse = true, false
+      local function completed_line(line)
+        if in_headers then
+          if line ~= "" then headers[#headers + 1] = line; return false end
+          local status = tonumber((headers[1] or ""):match("^HTTP/%S+ (%d+)"))
+          if status and status >= 100 and status < 200 then headers = {}; return false end
+          in_headers = false
+          sse = table.concat(headers, "\n"):lower():find("content%-type:%s*text/event%-stream") ~= nil
+          headers = {}
+        elseif line == "" then
+          if #data > 0 then
+            local ok, message = pcall(vim.json.decode, table.concat(data, "\n"))
+            data = {}
+            if ok and type(message) == "table" then
+              if message.id == payload.id and not message.method then return true end
+              if message.id ~= nil and message.method then return true end
             end
-          elseif line:match("^data:") then data[#data + 1] = line:sub(6):gsub("^ ", "") end
+          end
+        elseif line:match("^data:") then data[#data + 1] = line:sub(6):gsub("^ ", "") end
+        return false
+      end
+      local function completed_sse(chunk)
+        if not payload or payload.id == nil then return false end
+        local start = 1
+        while in_headers or sse do
+          local newline = chunk:find("\n", start, true)
+          if not newline then
+            if start <= #chunk then fragments[#fragments + 1] = chunk:sub(start) end
+            return false
+          end
+          fragments[#fragments + 1] = chunk:sub(start, newline - 1)
+          local line = table.concat(fragments)
+          fragments = {}
+          if line:sub(-1) == "\r" then line = line:sub(1, -2) end
+          if completed_line(line) then return true end
+          start = newline + 1
         end
         return false
       end
@@ -142,7 +162,7 @@ function M.call(name, arguments, config, ctx)
             stop(); resolve({ transport_error = "response exceeds wire byte limit" }); return
           end
           chunks[#chunks + 1] = chunk
-          if completed_sse() then
+          if completed_sse(chunk) then
             stop()
             resolve({ code = 0 })
           end
