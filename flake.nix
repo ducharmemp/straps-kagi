@@ -50,8 +50,14 @@
             '';
           };
         };
+      mkTrynix = pkgs: pkgs.wrapNeovimUnstable pkgs.neovim-unwrapped {
+        plugins = [ strapsFlake.packages.${pkgs.stdenv.hostPlatform.system}.default (mkPlugin pkgs) ];
+        waylandSupport = false;
+        luaRcContent = ''require("straps").setup({}) require("straps_kagi").setup({})'';
+        wrapperArgs = [ "--prefix" "PATH" ":" (lib.makeBinPath [ pkgs.curl pkgs.ripgrep ]) ];
+      };
     in {
-      packages = each (pkgs: { default = mkPlugin pkgs; straps-kagi = mkPlugin pkgs; });
+      packages = each (pkgs: { default = mkPlugin pkgs; straps-kagi = mkPlugin pkgs; trynix = mkTrynix pkgs; });
       overlays.default = final: prev: { vimPlugins = prev.vimPlugins // { straps-kagi = mkPlugin final; }; };
       nixvimModules = { default = module; straps-kagi = module; };
       devShells = each (pkgs: {
